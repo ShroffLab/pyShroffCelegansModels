@@ -13,6 +13,7 @@ setup_julia_env = "python setup_julia_env.py"
 python = "3.12.*"
 pyjuliacall = ">=0.9.24,<0.10"
 pyjuliapkg = ">=0.1.16,<0.2"
+numpy = ">=2.2.6,<3"
 
 [environments]
 dev = ["dev"]
