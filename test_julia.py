@@ -1,13 +1,6 @@
 from juliacall import Main as jl
-import juliapkg
 import numpy as np
-juliapkg.add("ThinPlateSplines", "1d861738-f48e-4029-b1d3-81ce6bc7f5ab", url="https://github.com/mkitti/ThinPlateSplines.jl", rev="mkitti-type-stability")
-juliapkg.add("ShroffCelegansModels","28a312d2-d9d3-46a7-98c1-9c09f12e8c99",path="/Users/malinmayorc/code/shroff/ShroffCelegansModels.jl", dev=True)
-# juliapkg.add("ShroffCelegansModels","28a312d2-d9d3-46a7-98c1-9c09f12e8c99",url="https://github.com/JaneliaSciComp/ShroffCelegansModels.jl", dev=True)
-juliapkg.resolve()
-
-jl.seval("using ThinPlateSplines")
-jl.seval("using ShroffCelegansModels")
+jl.seval("using ShroffCelegansModelsCore")
 
 # x1 = np.array([[0.0, 1.0,],[1.0, 0.0,],[1.0, 1.0,]])
 # x2 = np.array([[0.0, 1.0,],[1.0, 0.0,],[1.2, 1.5,]])
@@ -22,11 +15,13 @@ jl.seval("using ShroffCelegansModels")
 # model = jl.ShroffCelegansModel()
 
 lattice_csv = "lattice.csv"
-julia_model = jl.ShroffCelegansModels.build_celegans_model(lattice_csv)
+julia_model = jl.ShroffCelegansModelsCore.build_celegans_model(lattice_csv)
 # print(julia_model)
 
-point = jl.ShroffCelegansModels.Point3(3, 2, 4)
-points = np.array([point])
+point = jl.ShroffCelegansModelsCore.Point3(3, 2, 4)
 
-untwisted_points = jl.ShroffCelegansModels.untwist_annotations(julia_model, jlpoints)
+# points = np.array([[3,2,4]])
+# point = np.array((3,2,4))
+
+untwisted_points = jl.ShroffCelegansModelsCore.untwist_annotation(julia_model, point)
 print(untwisted_points)
