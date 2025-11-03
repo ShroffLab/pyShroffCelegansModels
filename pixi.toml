@@ -3,16 +3,19 @@ authors = ["Mark Kittisopikul <kittisopikulm@janelia.hhmi.org>"]
 channels = ["conda-forge"]
 description = "Add a short description here"
 name = "shroff"
-platforms = ["linux-64", "win-64"]
+platforms = ["linux-64", "win-64", "osx-arm64"]
 version = "0.1.0"
 
 [tasks]
 setup_julia_env = "python setup_julia_env.py"
+test = "pytest tests/ -v"
 
 [dependencies]
 python = "3.12.*"
 pyjuliacall = ">=0.9.24,<0.10"
 pyjuliapkg = ">=0.1.16,<0.2"
+numpy = ">=2.2.6,<3"
+pytest = ">=8.0"
 
 [environments]
 dev = ["dev"]
@@ -20,3 +23,6 @@ test = []
 
 [feature.dev.dependencies]
 ipython = "*"
+
+[pypi-dependencies]
+celegans-model = {path=".", editable = true}
