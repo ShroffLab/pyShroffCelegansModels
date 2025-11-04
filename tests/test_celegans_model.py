@@ -1,6 +1,7 @@
 """Tests for CelegansModel class."""
 
 import numpy as np
+import pandas as pd
 import pytest
 from pathlib import Path
 from celegans_model import CelegansModel
@@ -206,3 +207,62 @@ class TestIntegration:
         best = celegans_model.get_best_candidate(target_point)
         for coord in best:
             assert isinstance(coord, (int, float, np.number))
+
+
+class TestSeamCellUntwisting:
+    """Test that seam cells untwist to planar coordinates with DV ≈ 0."""
+
+    def test_seam_cells_untwist_to_near_zero_dv(
+        self, lattice_csv_path, celegans_model
+    ):
+        """Test that untwisting seam cells gives coord1 (DV) close to 0."""
+        # Load the lattice CSV to get seam cell positions
+        df = pd.read_csv(lattice_csv_path)
+
+        # Use ALL seam cells (including "a" cells)
+        for _, row in df.iterrows():
+            name = row['name']
+            # Seam cell position in twisted space
+            twisted_point = np.array(
+                [row['x_voxels'], row['y_voxels'], row['z_voxels']]
+            )
+
+            # Get candidates for this seam cell
+            candidates = celegans_model.get_candidate_locations(
+                twisted_point, threshold=None
+            )
+
+            # Each seam cell should have at least one candidate
+            # near the surface (coord1 ≈ 0)
+            if len(candidates) > 0:
+                coord1_abs = [abs(c[1]) for c in candidates]
+                min_coord1 = min(coord1_abs)
+                assert min_coord1 < 10, (
+                    f"Seam cell {name} has no candidate with "
+                    f"|coord1| < 10. Minimum |coord1| found: "
+                    f"{min_coord1:.2f}"
+                )
+
+    def test_all_seam_cells_have_candidates(
+        self, lattice_csv_path, celegans_model
+    ):
+        """Test that all seam cells produce at least one candidate."""
+        # Load the lattice CSV
+        df = pd.read_csv(lattice_csv_path)
+
+        # Use ALL seam cells (including "a" cells)
+        for _, row in df.iterrows():
+            name = row['name']
+            twisted_point = np.array(
+                [row['x_voxels'], row['y_voxels'], row['z_voxels']]
+            )
+
+            # Get candidates
+            candidates = celegans_model.get_candidate_locations(
+                twisted_point, threshold=None
+            )
+
+            assert len(candidates) > 0, (
+                f"Seam cell {name} at position {twisted_point} "
+                f"produced no candidates"
+            )

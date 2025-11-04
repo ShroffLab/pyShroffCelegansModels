@@ -35,7 +35,7 @@ class CelegansModel:
             of the point, in order (AP, ML, DV)
         """
 
-        candidates = jl.ShroffCelegansModelsCore.get_untwisted_annotation_candidates(self.julia_model, [0,0,0])
+        candidates = jl.ShroffCelegansModelsCore.get_untwisted_annotation_candidates(self.julia_model, target_point.tolist())
         points: list[tuple[float,float,float]] = []
         for candidate_point, distance in candidates:
             if threshold is None or distance <= threshold:
@@ -62,7 +62,7 @@ class CelegansModel:
                 for the given pixel location, based on nearness to the center spline
         """
 
-        candidates = jl.ShroffCelegansModelsCore.get_untwisted_annotation_candidates(self.julia_model, [0,0,0])
+        candidates = jl.ShroffCelegansModelsCore.get_untwisted_annotation_candidates(self.julia_model, target_point.tolist())
         if len(candidates) == 0:
             warn(
                 f"No candidate locations found for {target_point}.",
