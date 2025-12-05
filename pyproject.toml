@@ -21,7 +21,6 @@ authors = [
 ]
 version="v0.0.1_alpha"
 dependencies = [
-  "finn-viewer @ git+https://github.com/funkelab/finn.git@celegans",
 ]
 
 [tool.pixi.project]
