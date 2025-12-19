@@ -1,28 +1,51 @@
 [project]
 authors = ["Mark Kittisopikul <kittisopikulm@janelia.hhmi.org>"]
 channels = ["conda-forge"]
-description = "Add a short description here"
-name = "shroff"
+description = "C. elegans worm space coordinate transformations"
+name = "celegans-model"
 platforms = ["linux-64", "win-64", "osx-arm64"]
 version = "0.1.0"
 
 [tasks]
-setup_julia_env = "python setup_julia_env.py"
 test = "pytest tests/ -v"
+lint = "ruff check src/ tests/"
+format = "ruff format src/ tests/"
+typecheck = "mypy src/"
 
+# Core dependencies (always required)
 [dependencies]
-python = "3.12.*"
-pyjuliacall = ">=0.9.24,<0.10"
-pyjuliapkg = ">=0.1.16,<0.2"
-numpy = ">=2.2.6,<3"
+python = ">=3.10,<3.13"
+numpy = ">=1.20"
 pytest = ">=8.0"
 
-[environments]
-dev = ["dev"]
-test = []
+# Feature: Julia backend
+[feature.julia.dependencies]
+pyjuliacall = ">=0.9.24,<0.10"
+pyjuliapkg = ">=0.1.16,<0.2"
 
+[feature.julia.tasks]
+setup_julia_env = "python setup_julia_env.py"
+
+# Feature: Python/scipy backend
+[feature.python.dependencies]
+scipy = ">=1.10"
+pandas = ">=2.0"
+zarr = ">=2.14"
+
+# Feature: Development tools
 [feature.dev.dependencies]
 ipython = "*"
+matplotlib = ">=3.7"
+ruff = ">=0.1"
+mypy = ">=1.0"
+
+[environments]
+# Default: Python implementation
+default = { features = ["python"], solve-group = "default" }
+# Julia implementation
+julia = { features = ["julia"], solve-group = "julia" }
+# Full development environment
+dev = { features = ["python", "julia", "dev"], solve-group = "dev" }
 
 [pypi-dependencies]
-celegans-model = {path=".", editable = true}
+celegans-model = { path = ".", editable = true }
