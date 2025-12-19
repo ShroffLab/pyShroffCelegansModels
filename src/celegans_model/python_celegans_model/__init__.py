@@ -10,10 +10,15 @@ system model, without requiring Julia. It includes:
 - dist_to_spline: Distance calculation utilities
 """
 
+from .compute_central_spline import compute_central_spline_csv, compute_central_splines
 from .cubic_spline_3d import CubicSpline3D
+from .dist_to_spline import dist_to_spline
 from .python_celegans_model import PythonCelegansModel
 
 __all__ = [
     "CubicSpline3D",
     "PythonCelegansModel",
+    "compute_central_spline_csv",
+    "compute_central_splines",
+    "dist_to_spline",
 ]
