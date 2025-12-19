@@ -356,16 +356,13 @@ class TestUntwistingValues:
     def test_u_shaped_worm_center_point(self, model_impl):
         """Test untwisting a point on the center of a U-shaped worm.
 
-        The worm curves in a U shape (going down then back up in y),
-        but left/right seam cells remain parallel (constant offset).
+        The worm curves in a U shape (following a sine wave in y),
+        but left/right seam cells remain parallel (constant offset in z).
         A point on the center line should still untwist to (~0, ~0, mid_AP).
         """
-        if model_impl == "julia":
-            pytest.xfail("Julia doesn't find candidates for U-shaped worm geometry")
-
         n_points = 11
         t = np.linspace(0, np.pi, n_points)
-        # U-shape: x increases linearly, y follows a parabola (dips down then up)
+        # U-shape: x increases linearly, y follows sine wave
         x_coords = np.linspace(0, 100, n_points)
         y_coords = 50 * np.sin(t)  # Goes from 0 to 50 and back to 0
 
@@ -387,9 +384,9 @@ class TestUntwistingValues:
 
             model = JuliaCelegansModel.from_array(lattice_points, STANDARD_NAMES)
 
-        # Get the expected AP at the middle of the worm
-        ap_min, ap_max = model.internal_range
-        expected_ap = (ap_min + ap_max) / 2
+        # Expected AP is the arc length to the midpoint (~73.18 for this geometry)
+        # The sine curve y=50*sin(pi*x/100) has arc length ~146.37, so midpoint ~73.18
+        expected_ap = 73.18
 
         # Test a point on the center line at the middle of the worm
         # At the middle, x=50, y=50 (peak of the U), center z=10
@@ -412,7 +409,7 @@ class TestUntwistingValues:
         have non-zero ML coordinate after untwisting.
         """
         if model_impl == "julia":
-            pytest.xfail("Julia doesn't find candidates for U-shaped worm geometry")
+            pytest.xfail("Julia doesn't find candidates for points on seam cell surface")
 
         n_points = 11
         t = np.linspace(0, np.pi, n_points)
@@ -437,9 +434,8 @@ class TestUntwistingValues:
 
             model = JuliaCelegansModel.from_array(lattice_points, STANDARD_NAMES)
 
-        # Get the expected AP at the middle of the worm
-        ap_min, ap_max = model.internal_range
-        expected_ap = (ap_min + ap_max) / 2
+        # Expected AP is the arc length to the midpoint (~73.18 for this geometry)
+        expected_ap = 73.18
 
         # Test a point on the right side at the middle of the worm (z=0, on the
         # right seam cell)
