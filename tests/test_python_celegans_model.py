@@ -302,6 +302,143 @@ class TestArcLengthParameterization:
         assert model.internal_range[1] > 0
 
 
+class TestRetwist:
+    """Test retwist method (inverse of get_worm_coords)."""
+
+    def test_retwist_at_center_returns_center_point(self, python_model):
+        """retwist(0, 0, ap) should return the central spline point at ap."""
+        ap = 5.0
+        center_point = python_model.center_spline.interpolate([ap])[0]
+        result = python_model.retwist(0.0, 0.0, ap)
+        np.testing.assert_array_almost_equal(result, center_point, decimal=4)
+
+    def test_retwist_inverts_get_worm_coords(self, python_model):
+        """retwist(*get_worm_coords(p, ap)) should equal p when p is on the AP plane."""
+        ap = 5.0
+        center_point = python_model.center_spline.interpolate([ap])[0]
+        ml_basis, dv_basis, _ = python_model.get_basis_vectors(ap)
+        # Construct a point on the AP-plane (no tangential component).
+        original = center_point + 3.0 * ml_basis + (-2.0) * dv_basis
+
+        ml, dv, ap_out = python_model.get_worm_coords(tuple(original), ap)
+        recovered = python_model.retwist(ml, dv, ap_out)
+
+        np.testing.assert_array_almost_equal(recovered, original, decimal=4)
+
+    def test_retwist_round_trip_multiple_ap(self, python_model):
+        """Round-trip retwist(get_worm_coords(p)) for several AP values."""
+        for ap in [1.5, 3.0, 5.0, 7.5, 9.0]:
+            center_point = python_model.center_spline.interpolate([ap])[0]
+            ml_basis, dv_basis, _ = python_model.get_basis_vectors(ap)
+            original = center_point + 4.0 * ml_basis + 1.5 * dv_basis
+
+            ml, dv, ap_out = python_model.get_worm_coords(tuple(original), ap)
+            recovered = python_model.retwist(ml, dv, ap_out)
+
+            err = float(np.linalg.norm(recovered - original))
+            assert err < 1e-3, f"Round-trip error {err} at ap={ap}"
+
+    def test_retwist_returns_ndarray_length_3(self, python_model):
+        result = python_model.retwist(0.0, 0.0, 5.0)
+        assert isinstance(result, np.ndarray)
+        assert result.shape == (3,)
+
+
+class TestStraightenVolume:
+    """Test straighten_volume method."""
+
+    @staticmethod
+    def _make_phantom(model, radius=8.0):
+        """Build a 3D pixel volume with a bright tube along the central spline.
+
+        The volume axis order matches the lattice convention used in the test
+        fixtures, which is ``(x, y, z)``: the lattice points span x in
+        [0, 100*pi], y in [-30, 80], z = 0. Phantom shape is (X, Y, Z).
+        """
+        ap_dense = np.linspace(*model.internal_range, num=400)
+        center_pts = model.center_spline.interpolate(ap_dense)
+
+        x_lo, x_hi = float(center_pts[:, 0].min()) - 30, float(center_pts[:, 0].max()) + 30
+        y_lo, y_hi = float(center_pts[:, 1].min()) - 30, float(center_pts[:, 1].max()) + 30
+        z_lo, z_hi = float(center_pts[:, 2].min()) - 30, float(center_pts[:, 2].max()) + 30
+
+        X = int(np.ceil(x_hi - x_lo))
+        Y = int(np.ceil(y_hi - y_lo))
+        Z = int(np.ceil(z_hi - z_lo))
+
+        # Shift center points into volume index space.
+        offset = np.array([x_lo, y_lo, z_lo])
+        center_pts_shifted = center_pts - offset
+
+        vol = np.zeros((X, Y, Z), dtype=np.float32)
+        xx, yy, zz = np.indices((X, Y, Z))
+        grid = np.stack([xx, yy, zz], axis=-1).astype(np.float32)
+        for c in center_pts_shifted:
+            d2 = ((grid - c) ** 2).sum(-1)
+            vol = np.maximum(vol, np.exp(-d2 / (2 * (radius / 2.0) ** 2)))
+        return vol, offset
+
+    def test_output_shape(self, python_model):
+        """straighten_volume returns array with expected shape."""
+        vol, _ = self._make_phantom(python_model)
+        # Build a model whose center spline is shifted to live inside the
+        # phantom's index space.
+        out, ap_values = python_model.straighten_volume(vol, n_ap=64, extent=10)
+        assert out.shape == (64, 21, 21)
+        assert ap_values.shape == (64,)
+
+    def test_centerline_alignment(self, python_model):
+        """Worm centerline should appear at (dv=0, ml=0) — center column of each slice."""
+        vol, offset = self._make_phantom(python_model, radius=8.0)
+        # Construct a shifted model whose splines live in volume-index space.
+        shifted_lattice = python_model.lattice_points - offset
+        shifted_model = PythonCelegansModel(
+            shifted_lattice,
+            parameterization=python_model.parameterization,
+            spacing=python_model.spacing,
+            lattice_point_names=python_model.lattice_point_names,
+        )
+        out, _ = shifted_model.straighten_volume(vol, n_ap=80, extent=15)
+
+        # Column at (dv=0, ml=0) in straightened space corresponds to centerline.
+        center_col_mean = float(out[:, 15, 15].mean())
+        corner_col_mean = float(out[:, 0, 0].mean())
+        # Centerline is bright; corners are background ~0.
+        assert center_col_mean > 0.5
+        assert center_col_mean > 5.0 * (corner_col_mean + 1e-6)
+
+    def test_retwist_round_trip_via_volume(self, python_model):
+        """Map a known straightened-space pt → retwist → confirm it's on AP plane."""
+        out, ap_values = python_model.straighten_volume(
+            self._make_phantom(python_model)[0], n_ap=20, extent=10
+        )
+        # Pick a sample (ml, dv, ap) and round-trip via retwist + get_worm_coords.
+        ml_in, dv_in = 2.0, -1.5
+        ap_in = float(ap_values[10])
+        twisted = python_model.retwist(ml_in, dv_in, ap_in)
+        ml_out, dv_out, ap_out = python_model.get_worm_coords(tuple(twisted), ap_in)
+        assert ml_out == pytest.approx(ml_in, abs=1e-4)
+        assert dv_out == pytest.approx(dv_in, abs=1e-4)
+        assert ap_out == pytest.approx(ap_in, abs=1e-4)
+
+    def test_default_extent_and_n_ap(self, python_model):
+        """Defaults pick reasonable values when not specified."""
+        vol, _ = self._make_phantom(python_model)
+        out, ap_values = python_model.straighten_volume(vol)
+        assert out.ndim == 3
+        assert out.shape[1] == out.shape[2]  # square cross-section
+        assert out.shape[1] >= 3  # at least some extent
+        assert out.shape[0] == ap_values.shape[0]
+
+    def test_invalid_extent_raises(self, python_model):
+        with pytest.raises(ValueError, match="extent must be"):
+            python_model.straighten_volume(np.zeros((10, 10, 10)), n_ap=10, extent=0)
+
+    def test_invalid_n_ap_raises(self, python_model):
+        with pytest.raises(ValueError, match="n_ap must be"):
+            python_model.straighten_volume(np.zeros((10, 10, 10)), n_ap=1, extent=5)
+
+
 class TestCubicSpline3D:
     """Test CubicSpline3D helper class."""
 
