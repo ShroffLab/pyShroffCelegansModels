@@ -369,6 +369,7 @@ class PythonCelegansModel(CelegansModelBase):
         volume: np.ndarray,
         n_ap: int | None = None,
         extent: int | None = None,
+        per_ring_max_radii: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Resample a 3D pixel volume into straightened (AP, DV, ML) coordinates.
 
@@ -409,7 +410,15 @@ class PythonCelegansModel(CelegansModelBase):
             extent: Half-width of each AP cross-section in voxels (output
                 slice shape will be ``(2*extent+1, 2*extent+1)``). ``None``
                 (default) = computed from
-                :meth:`get_max_side_spline_distance` plus an 8-voxel buffer.
+                :meth:`get_max_side_spline_distance` plus an 8-voxel buffer,
+                or from ``max(per_ring_max_radii) + 8`` if provided.
+            per_ring_max_radii: Optional length-``n_lattice`` array of
+                per-anchor outer-bound radii (e.g., max distance of 32
+                cross-section vertices from the midline center). When given,
+                each AP slice is sampled only out to its own interpolated
+                radius (pixels outside stay 0); ``extent`` still controls
+                the uniform output shape. ``None`` = sample to ``extent``
+                everywhere (current behavior).
 
         Returns:
             Tuple of ``(straightened, ap_values)`` where:
@@ -431,9 +440,21 @@ class PythonCelegansModel(CelegansModelBase):
                 "Install with: pip install celegans-model[python]"
             ) from e
 
+        if per_ring_max_radii is not None:
+            per_ring_max_radii = np.asarray(per_ring_max_radii, dtype=np.float64)
+            n_anchors = self.lattice_points.shape[0]
+            if per_ring_max_radii.shape != (n_anchors,):
+                raise ValueError(
+                    f"per_ring_max_radii must have shape ({n_anchors},), "
+                    f"got {per_ring_max_radii.shape}"
+                )
+
         if extent is None:
-            max_side_dist = self.get_max_side_spline_distance()
-            extent = int(np.ceil(max_side_dist)) + 8
+            if per_ring_max_radii is not None:
+                extent = int(np.ceil(float(per_ring_max_radii.max()))) + 8
+            else:
+                max_side_dist = self.get_max_side_spline_distance()
+                extent = int(np.ceil(max_side_dist)) + 8
         extent = int(extent)
         if extent < 1:
             raise ValueError(f"extent must be >= 1, got {extent}")
@@ -462,19 +483,47 @@ class PythonCelegansModel(CelegansModelBase):
         dv_flat = dv_grid.ravel()
         ml_flat = ml_grid.ravel()
 
+        # Per-AP outer-bound radius (interpolated from per-anchor radii).
+        if per_ring_max_radii is not None:
+            per_ap_radii = np.interp(
+                ap_values, self._lattice_indices, per_ring_max_radii
+            )
+            radius_flat = np.sqrt(dv_flat**2 + ml_flat**2)
+        else:
+            per_ap_radii = None
+
         vol64 = np.asarray(volume, dtype=np.float64)
         for k, ap in enumerate(ap_values):
             center_point = self.center_spline.interpolate([float(ap)])[0]
             ml_basis, dv_basis, _ = self.get_basis_vectors(float(ap))
-            world_pts = (
-                center_point[None, :]
-                + dv_flat[:, None] * dv_basis[None, :]
-                + ml_flat[:, None] * ml_basis[None, :]
-            )
-            sampled = map_coordinates(
-                vol64, world_pts.T, order=1, mode="constant", cval=0.0
-            )
-            out[k] = sampled.reshape(side, side)
+            if per_ap_radii is not None:
+                # Skip pixels outside this slice's outer bound.
+                mask = radius_flat <= per_ap_radii[k]
+                if not mask.any():
+                    continue
+                dv_sel = dv_flat[mask]
+                ml_sel = ml_flat[mask]
+                world_pts = (
+                    center_point[None, :]
+                    + dv_sel[:, None] * dv_basis[None, :]
+                    + ml_sel[:, None] * ml_basis[None, :]
+                )
+                sampled = map_coordinates(
+                    vol64, world_pts.T, order=1, mode="constant", cval=0.0
+                )
+                slice_out = np.zeros(side * side, dtype=np.float32)
+                slice_out[mask] = sampled.astype(np.float32)
+                out[k] = slice_out.reshape(side, side)
+            else:
+                world_pts = (
+                    center_point[None, :]
+                    + dv_flat[:, None] * dv_basis[None, :]
+                    + ml_flat[:, None] * ml_basis[None, :]
+                )
+                sampled = map_coordinates(
+                    vol64, world_pts.T, order=1, mode="constant", cval=0.0
+                )
+                out[k] = sampled.reshape(side, side)
 
         return out, ap_values
 
@@ -574,6 +623,8 @@ class PythonCelegansModel(CelegansModelBase):
         self.right_spline = CubicSpline3D(indices, right)
         self.left_spline = CubicSpline3D(indices, left)
         self.center_spline = CubicSpline3D(indices, center)
+        # AP position of each lattice anchor (used for per-anchor interpolation).
+        self._lattice_indices = np.asarray(indices, dtype=np.float64)
         self._internal_range = (0.0, max(indices))
 
     def _compute_arc_length_indices(self) -> list[float]:
