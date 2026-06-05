@@ -8,19 +8,40 @@ allow-direct-references = true
 
 [project]
 name = "celegans-model"
-description = "Python code for accessing and visalizing the twisted and untwisted celegans model"
+description = "Python code for C. elegans worm space coordinate transformations"
 readme = "README.md"
-requires-python = ">=3.10,<3.12"
+requires-python = ">=3.10"
 classifiers = [
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
 ]
-keywords = []
+keywords = ["c-elegans", "worm", "coordinate-transformation", "neuroscience"]
 license = { text = "BSD 3-Clause License" }
 authors = [
     { email = "malinmayorc@janelia.hhmi.org", name = "Funke Lab" },
 ]
-version="v0.0.1_alpha"
+version="v0.0.2"
 dependencies = [
+  "numpy>=1.20",
+]
+
+[project.optional-dependencies]
+# Julia backend for CelegansModel (original implementation)
+julia = [
+  "juliacall>=0.9.24",
+  "juliapkg>=0.1.16",
+]
+# Python implementation dependencies
+python = [
+  "scipy>=1.10",
+  "pandas>=2.0",
+  "zarr>=2.14",
+]
+# All optional dependencies
+all = [
+  "celegans-model[julia,python]",
 ]
 
 [tool.pixi.project]
@@ -30,7 +51,7 @@ platforms = ["osx-arm64", "linux-64"]
 # https://github.com/charliermarsh/ruff
 [tool.ruff]
 line-length = 90
-target-version = "py38"
+target-version = "py310"
 
 [tool.ruff.lint]
 extend-select = [
