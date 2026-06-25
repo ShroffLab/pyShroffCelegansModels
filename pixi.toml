@@ -1,4 +1,4 @@
-[project]
+[workspace]
 authors = ["Mark Kittisopikul <kittisopikulm@janelia.hhmi.org>"]
 channels = ["conda-forge"]
 description = "C. elegans worm space coordinate transformations"
@@ -16,7 +16,7 @@ typecheck = "mypy src/"
 [dependencies]
 python = ">=3.10,<3.13"
 numpy = ">=1.20"
-pytest = ">=8.0"
+pytest = ">=9.0.3,<10"
 
 # Feature: Julia backend
 [feature.julia.dependencies]
