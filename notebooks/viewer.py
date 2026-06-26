@@ -19,6 +19,7 @@
 from pathlib import Path
 
 import napari
+import toml
 from motile_tracker.data_views.views.ortho_views import initialize_ortho_views
 
 from celegans_annotator import add_lineage_view, load_nuclei_from_zip
@@ -33,8 +34,9 @@ from celegans_annotator.clipping_planes import (
 # Edit these paths to point to your data. Use `Path(r"...")` on Windows.
 
 # %%
+config = toml.load("notebooks/config.toml")
 # New CND-1
-base = Path("/Volumes/shroff-1/shrofflab/CND-1_RedUntwisting_A/Lineaging/20260225/20260225_CND-1_lineage/Pos0/SPIMB/For_Deep_Learning/For_Lineaging")
+base = Path(config["data"])
 green_zarr_path = base / "green_channel.zarr"
 red_zarr_path = base / "red_channel.zarr"
 sn_zip_path = base / "StarryNite/SN_files/Decon_emb1_edited.zip"
