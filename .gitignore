@@ -83,3 +83,4 @@ dmypy.json
 *.hdf5
 *.h5
 pixi.lock
+notebooks/config.toml
