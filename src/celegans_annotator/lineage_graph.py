@@ -176,6 +176,10 @@ def graph_to_solution_tracks(
     by funtracks (id, time, z, y, x, parent_id, name) and uses
     tracks_from_df to build SolutionTracks.
 
+    Pre-computes ``track_id`` and ``lineage_id`` on the lightweight
+    NetworkX graph so that funtracks can skip its expensive rustworkx-based
+    recomputation during ``SolutionTracks`` initialization.
+
     Args:
         graph: Lineage graph from build_lineage_graph.
         scale: Scale factors [t, z, y, x]. Defaults to [1, 1, 1, 1].
@@ -186,12 +190,29 @@ def graph_to_solution_tracks(
     if scale is None:
         scale = [1.0, 1.0, 1.0, 1.0]
 
+    # Pre-compute lineage_id: each weakly connected component
+    lineage_ids: dict[int, int] = {}
+    for lid, component in enumerate(nx.weakly_connected_components(graph), start=1):
+        for node in component:
+            lineage_ids[node] = lid
+
+    # Pre-compute track_id: remove division edges, then find components
+    graph_no_divs = graph.copy()
+    for node in graph.nodes:
+        if graph.out_degree(node) >= 2:
+            for succ in list(graph.successors(node)):
+                graph_no_divs.remove_edge(node, succ)
+    track_ids: dict[int, int] = {}
+    for tid, component in enumerate(
+        nx.weakly_connected_components(graph_no_divs), start=1
+    ):
+        for node in component:
+            track_ids[node] = tid
+
     # Build a DataFrame from the graph nodes and edges.
-    # tracks_from_df expects: id, time, z, y, x, parent_id
     rows = []
     for node_id in graph.nodes:
         attrs = graph.nodes[node_id]
-        # Find parent: the predecessor node (there should be 0 or 1)
         predecessors = list(graph.predecessors(node_id))
         parent_id = predecessors[0] if predecessors else -1
         rows.append(
@@ -203,6 +224,8 @@ def graph_to_solution_tracks(
                 "x": attrs["x"],
                 "parent_id": parent_id,
                 "name": attrs.get("name", ""),
+                "tracklet_id": track_ids[node_id],
+                "lineage_id": lineage_ids[node_id],
             }
         )
 
@@ -217,6 +240,8 @@ def graph_to_solution_tracks(
             "id": "id",
             "parent_id": "parent_id",
             "name": "name",
+            "tracklet_id": "tracklet_id",
+            "lineage_id": "lineage_id",
         },
     )
 
@@ -255,10 +280,15 @@ def add_lineage_view(
 
     if points_layer is not None:
         node_ids = points_layer.properties["node_id"]
-        cell_names = []
-        for node_id in node_ids:
-            cell_names.append(tracks.get_node_attr(node_id, "name") or "")
+        # Use nuclei_labels directly — node IDs are indices into the
+        # original arrays, so this avoids expensive per-node lookups
+        # through funtracks' rustworkx graph.
+        cell_names = [nuclei_labels[nid] for nid in node_ids]
         points_layer.features["name"] = cell_names
+        # Update feature_defaults so ortho view copies have the same columns
+        defaults = points_layer.feature_defaults
+        defaults["name"] = ""
+        points_layer.feature_defaults = defaults
         points_layer.text = "name"
         points_layer.refresh()
         logger.info("Added %d cell names to track points layer", len(cell_names))
