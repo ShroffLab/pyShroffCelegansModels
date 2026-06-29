@@ -18,6 +18,7 @@ python = ">=3.10,<3.13"
 numpy = ">=1.20"
 pytest = ">=9.0.3,<10"
 toml = "*"
+pip = ">=26.1.2,<27"
 
 # Feature: Julia backend
 [feature.julia.dependencies]
@@ -57,12 +58,13 @@ magicgui = ">=0.10.1"
 qtpy = ">=2.4"
 natsort = ">=8.4"
 numcodecs = ">=0.13,<0.16"
+napari = ">=0.7.1,<0.8"
 
 [feature.annotator.pypi-dependencies]
-napari = ">=0.6.2,<0.7.0"
-funtracks = ">=2,<3"
-motile-tracker = ">=5,<6"
 pyqt5 = ">=5.15"
+networkx = "*"
+motile-tracker = ">=4.7.0, <5"
+funtracks = ">=2.0.3, <3"
 
 [pypi-dependencies]
 celegans-model = { path = ".", editable = true }
