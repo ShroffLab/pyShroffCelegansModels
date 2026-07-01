@@ -14,11 +14,12 @@ typecheck = "mypy src/"
 
 # Core dependencies (always required)
 [dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.6,<3.12"
 numpy = ">=1.20"
 pytest = ">=9.0.3,<10"
 toml = "*"
-pip = ">=26.1.2,<27"
+jupyter = ">=1.1.1,<2"
+matplotlib = ">=3.11.0,<4"
 
 # Feature: Julia backend
 [feature.julia.dependencies]
@@ -36,7 +37,6 @@ zarr = ">=2.14"
 
 # Feature: Development tools
 [feature.dev.dependencies]
-ipython = "*"
 matplotlib = ">=3.7"
 ruff = ">=0.1"
 mypy = ">=1.0"
@@ -62,9 +62,10 @@ numcodecs = ">=0.13,<0.16"
 [feature.annotator.pypi-dependencies]
 pyqt5 = ">=5.15"
 networkx = "*"
-motile-tracker = ">=4.7.0, <5"
+napari = "*"
+relative-import-context = ">=0.1.0, <0.2"
 funtracks = ">=2.0.3, <3"
-napari = ">=0.7.1,<0.8"
+motile-tracker = ">=4.7.0, <5"
 
 [pypi-dependencies]
 celegans-model = { path = ".", editable = true }
