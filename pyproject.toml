@@ -2,7 +2,7 @@
 build-backend = "hatchling.build"
 requires = ["hatchling"]
 [tool.hatch.build.targets.wheel]
-packages = ["src/celegans_model"]
+packages = ["src/celegans_model", "src/celegans_annotator"]
 [tool.hatch.metadata]
 allow-direct-references = true
 
@@ -39,9 +39,21 @@ python = [
   "pandas>=2.0",
   "zarr>=2.14",
 ]
+# Annotation tool dependencies (napari-based viewer + lineage tools)
+annotator = [
+  "napari>=0.6.2",
+  "pandas>=2",
+  "magicgui>=0.10.1",
+  "qtpy>=2.4",
+  "zarr>=2.18.7",
+  "networkx>=3.0",
+  "funtracks",
+  "motile-tracker",
+  "natsort>=8.4",
+]
 # All optional dependencies
 all = [
-  "celegans-model[julia,python]",
+  "celegans-model[julia,python,annotator]",
 ]
 
 [tool.pixi.project]
@@ -52,6 +64,7 @@ platforms = ["osx-arm64", "linux-64"]
 [tool.ruff]
 line-length = 90
 target-version = "py310"
+extend-exclude = ["notebooks"]
 
 [tool.ruff.lint]
 extend-select = [
