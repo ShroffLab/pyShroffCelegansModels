@@ -338,6 +338,195 @@ class PythonCelegansModel(CelegansModelBase):
         dv = np.dot(target_vec, dv_basis)
         return ml, dv, ap
 
+    def retwist(self, ml: float, dv: float, ap: float) -> np.ndarray:
+        """Map a worm-space coordinate (ml, dv, ap) back to pixel space.
+
+        Inverse of :meth:`get_worm_coords` — given a point in worm space,
+        returns its location in the original pixel volume that the lattice was
+        annotated in. Useful for "preview-mode" workflows that let users edit
+        annotations on a straightened display and then map the edits back to
+        the twisted volume on save.
+
+        The returned pixel coordinate is in the same axis convention as the
+        lattice points used to construct the model (typically ``(x, y, z)``
+        for arrays loaded via :meth:`from_csv`; whichever convention the
+        caller used when passing a numpy array to the constructor).
+
+        Args:
+            ml: medial-lateral coordinate in worm space.
+            dv: dorsal-ventral coordinate in worm space.
+            ap: anterior-posterior coordinate (in this model's parameterization).
+
+        Returns:
+            Pixel-space coordinate as a 1D numpy array of length 3.
+        """
+        center_point = self.center_spline.interpolate([float(ap)])[0]
+        ml_basis, dv_basis, _tan_vec = self.get_basis_vectors(float(ap))
+        return center_point + float(ml) * ml_basis + float(dv) * dv_basis
+
+    def straighten_volume(
+        self,
+        volume: np.ndarray,
+        n_ap: int | None = None,
+        extent: int | None = None,
+        per_ring_max_radii: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Resample a 3D pixel volume into straightened (AP, DV, ML) coordinates.
+
+        For each AP slice, samples a 2D plane spanned by ``(ml_basis, dv_basis)``
+        at unit-voxel resolution out to ``±extent``, then stacks the slices
+        along the AP axis. Conceptually equivalent to MIPAV's
+        ``LatticeModel.generateCurves`` + ``writeDiagonal`` resampling, expressed
+        as a method on the worm-space coordinate model.
+
+        Output array layout (suitable for direct display in 3D viewers like
+        napari with ``ndim=3``):
+
+        * axis 0 = AP (head→tail)
+        * axis 1 = DV (dorsal-ventral)
+        * axis 2 = ML (medial-lateral)
+
+        The center of each AP slice corresponds to ``(ml=0, dv=0)`` (i.e., the
+        central spline). For pixel ``(i, j)`` in slice ``k``, the worm-space
+        coordinate is ``ml = j - extent``, ``dv = i - extent``, and
+        ``ap = ap_values[k]``.
+
+        Inverse mapping (from straightened back to twisted pixel space) is
+        provided by :meth:`retwist`. The implementation uses
+        ``scipy.ndimage.map_coordinates`` with linear interpolation, matching
+        MIPAV's accurate ray-sample mode.
+
+        The ``volume`` axis order must match the lattice point coordinate
+        convention used to construct this model — e.g., if the lattice was
+        provided in ``(x, y, z)`` order, ``volume.shape`` is interpreted as
+        ``(X, Y, Z)``; if in ``(z, y, x)`` order, ``volume.shape`` is
+        ``(Z, Y, X)``.
+
+        Args:
+            volume: 3D numpy array of pixel intensities. Axis order must match
+                the lattice point convention.
+            n_ap: Number of slices along the AP axis. ``None`` (default) =
+                approximately one slice per voxel of central-spline arc length.
+            extent: Half-width of each AP cross-section in voxels (output
+                slice shape will be ``(2*extent+1, 2*extent+1)``). ``None``
+                (default) = computed from
+                :meth:`get_max_side_spline_distance` plus an 8-voxel buffer,
+                or from ``max(per_ring_max_radii) + 8`` if provided.
+            per_ring_max_radii: Optional length-``n_lattice`` array of
+                per-anchor outer-bound radii (e.g., max distance of 32
+                cross-section vertices from the midline center). When given,
+                each AP slice is sampled only out to its own interpolated
+                radius (pixels outside stay 0); ``extent`` still controls
+                the uniform output shape. ``None`` = sample to ``extent``
+                everywhere (current behavior).
+
+        Returns:
+            Tuple of ``(straightened, ap_values)`` where:
+
+            * ``straightened``: float32 array of shape
+              ``(n_ap, 2*extent+1, 2*extent+1)``.
+            * ``ap_values``: 1D array of length ``n_ap`` giving the AP
+              parameter for each slice (use these to index back into the
+              model with :meth:`retwist`).
+
+        Raises:
+            ImportError: If scipy is not installed.
+        """
+        try:
+            from scipy.ndimage import map_coordinates
+        except ImportError as e:
+            raise ImportError(
+                "scipy is required for straighten_volume. "
+                "Install with: pip install celegans-model[python]"
+            ) from e
+
+        if per_ring_max_radii is not None:
+            per_ring_max_radii = np.asarray(per_ring_max_radii, dtype=np.float64)
+            n_anchors = self.lattice_points.shape[0]
+            if per_ring_max_radii.shape != (n_anchors,):
+                raise ValueError(
+                    f"per_ring_max_radii must have shape ({n_anchors},), "
+                    f"got {per_ring_max_radii.shape}"
+                )
+
+        if extent is None:
+            if per_ring_max_radii is not None:
+                extent = int(np.ceil(float(per_ring_max_radii.max()))) + 8
+            else:
+                max_side_dist = self.get_max_side_spline_distance()
+                extent = int(np.ceil(max_side_dist)) + 8
+        extent = int(extent)
+        if extent < 1:
+            raise ValueError(f"extent must be >= 1, got {extent}")
+
+        ap_min, ap_max = self._internal_range
+
+        if n_ap is None:
+            # Estimate central-spline arc length to pick a sensible default.
+            n_dense = 500
+            ap_dense = np.linspace(ap_min, ap_max, n_dense)
+            pts_dense = self.center_spline.interpolate(ap_dense)
+            arc_length = float(
+                np.sum(np.linalg.norm(np.diff(pts_dense, axis=0), axis=1))
+            )
+            n_ap = max(int(np.ceil(arc_length)), 10)
+        n_ap = int(n_ap)
+        if n_ap < 2:
+            raise ValueError(f"n_ap must be >= 2, got {n_ap}")
+
+        ap_values = np.linspace(ap_min, ap_max, n_ap)
+        side = 2 * extent + 1
+        out = np.zeros((n_ap, side, side), dtype=np.float32)
+
+        offsets = np.arange(-extent, extent + 1, dtype=np.float64)
+        dv_grid, ml_grid = np.meshgrid(offsets, offsets, indexing="ij")
+        dv_flat = dv_grid.ravel()
+        ml_flat = ml_grid.ravel()
+
+        # Per-AP outer-bound radius (interpolated from per-anchor radii).
+        if per_ring_max_radii is not None:
+            per_ap_radii = np.interp(
+                ap_values, self._lattice_indices, per_ring_max_radii
+            )
+            radius_flat = np.sqrt(dv_flat**2 + ml_flat**2)
+        else:
+            per_ap_radii = None
+
+        vol64 = np.asarray(volume, dtype=np.float64)
+        for k, ap in enumerate(ap_values):
+            center_point = self.center_spline.interpolate([float(ap)])[0]
+            ml_basis, dv_basis, _ = self.get_basis_vectors(float(ap))
+            if per_ap_radii is not None:
+                # Skip pixels outside this slice's outer bound.
+                mask = radius_flat <= per_ap_radii[k]
+                if not mask.any():
+                    continue
+                dv_sel = dv_flat[mask]
+                ml_sel = ml_flat[mask]
+                world_pts = (
+                    center_point[None, :]
+                    + dv_sel[:, None] * dv_basis[None, :]
+                    + ml_sel[:, None] * ml_basis[None, :]
+                )
+                sampled = map_coordinates(
+                    vol64, world_pts.T, order=1, mode="constant", cval=0.0
+                )
+                slice_out = np.zeros(side * side, dtype=np.float32)
+                slice_out[mask] = sampled.astype(np.float32)
+                out[k] = slice_out.reshape(side, side)
+            else:
+                world_pts = (
+                    center_point[None, :]
+                    + dv_flat[:, None] * dv_basis[None, :]
+                    + ml_flat[:, None] * ml_basis[None, :]
+                )
+                sampled = map_coordinates(
+                    vol64, world_pts.T, order=1, mode="constant", cval=0.0
+                )
+                out[k] = sampled.reshape(side, side)
+
+        return out, ap_values
+
     def get_basis_vectors(self, ap: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Get the ML, DV, and tangent basis vectors at a given AP location.
 
@@ -434,6 +623,8 @@ class PythonCelegansModel(CelegansModelBase):
         self.right_spline = CubicSpline3D(indices, right)
         self.left_spline = CubicSpline3D(indices, left)
         self.center_spline = CubicSpline3D(indices, center)
+        # AP position of each lattice anchor (used for per-anchor interpolation).
+        self._lattice_indices = np.asarray(indices, dtype=np.float64)
         self._internal_range = (0.0, max(indices))
 
     def _compute_arc_length_indices(self) -> list[float]:

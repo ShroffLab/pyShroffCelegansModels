@@ -130,6 +130,59 @@ class CelegansModelBase(ABC):
             f"{self.__class__.__name__} does not support get_worm_coords"
         )
 
+    def retwist(self, ml: float, dv: float, ap: float) -> np.ndarray:
+        """Map a worm-space coordinate (ml, dv, ap) back to pixel space.
+
+        Inverse of :meth:`get_worm_coords`. Useful for "preview-mode" workflows
+        where users edit annotations on a straightened display and need the
+        edits mapped back to the twisted pixel volume.
+
+        Args:
+            ml: medial-lateral coordinate in worm space.
+            dv: dorsal-ventral coordinate in worm space.
+            ap: anterior-posterior coordinate in this model's parameterization.
+
+        Returns:
+            Pixel-space coordinate as a 1D numpy array of length 3, in the
+            same axis convention as the lattice points used to construct
+            the model.
+
+        Raises:
+            NotImplementedError: If the implementation does not support this method.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support retwist"
+        )
+
+    def straighten_volume(
+        self,
+        volume: np.ndarray,
+        n_ap: int | None = None,
+        extent: int | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Resample a 3D pixel volume into straightened (AP, DV, ML) coordinates.
+
+        Output axis layout: axis 0 = AP, axis 1 = DV, axis 2 = ML, with the
+        center of each AP slice corresponding to ``(ml=0, dv=0)``. The
+        ``volume`` axis order must match the lattice point coordinate
+        convention used to construct this model.
+
+        Args:
+            volume: 3D numpy array of pixel intensities.
+            n_ap: number of slices along AP. None = auto from arc length.
+            extent: half-width of each cross-section in voxels. None = auto
+                from worm width.
+
+        Returns:
+            Tuple of ``(straightened, ap_values)``.
+
+        Raises:
+            NotImplementedError: If the implementation does not support this method.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support straighten_volume"
+        )
+
     def get_basis_vectors(self, ap: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Get ML, DV, and tangent basis vectors at a given AP location.
 
